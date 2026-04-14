@@ -1,0 +1,16 @@
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+faiss-cpu==1.8.0
+open-clip-torch==2.24.0
+facenet-pytorch==2.5.3
+pillow==10.2.0
+imagehash==4.3.1
+networkx==3.2.1
+watchdog==4.0.0
+reverse_geocoder==1.5.1
+scipy==1.12.0
+numpy==1.26.4
+python-multipart==0.0.9
+torch
+torchvision
+torchaudio

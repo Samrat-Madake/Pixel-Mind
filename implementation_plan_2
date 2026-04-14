@@ -1,0 +1,560 @@
+# PixelMind — Offline AI Photo Intelligence System
+## 🔒 Final Implementation Plan (All Decisions Locked)
+
+> **100% Local · Zero Internet · Windows Desktop**
+> Hardware: Dell Inspiron 15 3520 · i5 12th Gen · 7.69GB RAM · CPU-only
+
+---
+
+## ✅ Architecture Decisions (Locked)
+
+| Question | Decision | Impact |
+|---|---|---|
+| GPU Support | CPU-only Phase 2, optional GPU in Phase 5 | No CUDA deps until Phase 5 |
+| Model Bundling | Download on first-run (~465MB) | Lean installer, phased UX |
+| Face Clustering | Incremental nearest-centroid assignment | Memory-safe, O(n_new × n_clusters) |
+| Image-to-Image Search | Reuse stored FAISS vector (< 1ms lookup) | Skip 100–200ms CLIP re-encode |
+| Platforms | Windows Phase 5, Mac/Linux as Phase 5.1 follow-up | NSIS installer, Windows-first |
+
+---
+
+## 📐 Architecture Overview
+
+### System Layers
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    DESKTOP UI LAYER                          │
+│         Electron 30 + React 18 + Vite + Tailwind CSS        │
+│   Search │ People │ Graph (D3.js) │ Duplicates │ Settings   │
+└────────────────────────┬────────────────────────────────────┘
+                         │ HTTP / IPC
+┌────────────────────────▼────────────────────────────────────┐
+│                  FASTAPI BACKEND LAYER                       │
+│         FastAPI + Uvicorn · 12 REST Endpoints · SSE          │
+│   /index │ /search │ /people │ /graph │ /duplicates          │
+└──────────────┬───────────────────────────────┬──────────────┘
+               │                               │
+┌──────────────▼──────────┐   ┌────────────────▼─────────────┐
+│      AI PIPELINE LAYER   │   │       GRAPH ENGINE            │
+│  CLIP ViT-B/32 (512-D)  │   │  NetworkX (graph.pkl)         │
+│  MTCNN + FaceNet (128-D)│   │  CO_APPEARS + APPEARS_IN      │
+│  EXIF Parser (Pillow)   │   │  Incremental node updates     │
+│  pHash Dedup (DCT 8×8)  │   └────────────────┬─────────────┘
+└──────────────┬──────────┘                    │
+               │                               │
+┌──────────────▼───────────────────────────────▼──────────────┐
+│                     STORAGE LAYER                            │
+│  SQLite (pixelmind.db)  │  FAISS (faiss.index)              │
+│  6 tables, WAL mode     │  IVFFlat nlist=256 · 512-D        │
+│  Indexed: shot_date,    │  FlatL2 · 128-D faces             │
+│  cluster_id, phash      │                                   │
+│  File System: thumbnails/256×256 · originals/ · models/     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🛠️ Technology Stack
+
+### Backend (Python)
+| Component | Library | Notes |
+|---|---|---|
+| API Server | `fastapi` + `uvicorn[standard]` | ASGI, SSE support |
+| CLIP Encoding | `open-clip-torch` (ViT-B/32) | 512-D, CPU mode |
+| Face Detection | `facenet-pytorch` MTCNN | Multi-scale CNN |
+| Face Recognition | `facenet-pytorch` InceptionResnetV1 | 128-D embedding |
+| Vector Search | `faiss-cpu` | IVFFlat + FlatL2 |
+| Metadata DB | `sqlite3` (stdlib) | WAL mode |
+| Relationship Graph | `networkx` | Pickled graph.pkl |
+| File Watcher | `watchdog` | OS-level events |
+| Image Processing | `Pillow`, `imagehash` | Resize, pHash |
+| Geocoding (offline) | `reverse_geocoder` | No internet needed |
+
+### Frontend (Desktop)
+| Component | Library |
+|---|---|
+| Desktop Shell | Electron 30+ |
+| UI Framework | React 18 + JSX |
+| Build Tool | Vite 5 |
+| Styling | Tailwind CSS |
+| Graph Viz | D3.js v7 |
+| Data Fetching | TanStack Query v5 |
+| IPC Bridge | Electron contextBridge |
+
+### Runtime Requirements (CPU Mode)
+| Spec | Value |
+|---|---|
+| Indexing Speed | ~1.0 img/sec (i5 12th gen) |
+| RAM Usage | ~1.2GB peak (batch=8 CLIP) |
+| Disk (app) | ~50MB (no models bundled) |
+| Disk (models) | ~465MB (first-run download) |
+| Disk (data) | Grows with library size |
+
+---
+
+## 📁 Final Project Structure
+
+```
+pixelmind/
+├── backend/
+│   ├── api/
+│   │   ├── main.py                    # FastAPI app, CORS, lifespan
+│   │   ├── routes/
+│   │   │   ├── index_routes.py        # POST /index, GET /index/progress (SSE)
+│   │   │   ├── search_routes.py       # GET /search
+│   │   │   ├── people_routes.py       # GET /people, POST /label-cluster, /merge-clusters
+│   │   │   ├── graph_routes.py        # GET /graph, GET /graph/{cluster_id}
+│   │   │   └── duplicate_routes.py    # GET /duplicates, POST /duplicates/delete
+│   │   └── sse.py                     # SSE event queue + streaming
+│   ├── pipelines/
+│   │   ├── ingest.py                  # File scanner + SHA-256 dedup + queue
+│   │   ├── clip_pipeline.py           # CLIP image + text encode, FAISS CRUD
+│   │   ├── face_pipeline.py           # MTCNN detect → FaceNet embed → incremental cluster
+│   │   ├── exif_pipeline.py           # EXIF metadata + offline GPS decode
+│   │   └── dedup_pipeline.py          # pHash generation + Hamming distance
+│   ├── db/
+│   │   ├── schema.sql                 # All 6 table definitions
+│   │   ├── db.py                      # SQLite connection, WAL mode, helpers
+│   │   └── migrations/                # Future schema version management
+│   ├── graph/
+│   │   ├── graph_manager.py           # NetworkX build, update, query, serialize
+│   │   └── graph_queries.py           # Common traversal helpers
+│   ├── search/
+│   │   ├── search_engine.py           # Merge engine + re-ranking
+│   │   ├── faiss_store.py             # FAISS index CRUD wrapper
+│   │   └── filters.py                 # SQLite filter builder (date, GPS, camera)
+│   └── utils/
+│       ├── thumbnail.py               # Background 256×256 JPEG generation
+│       ├── geocoder.py                # Offline reverse geocode wrapper
+│       ├── model_downloader.py        # First-run model download with progress
+│       └── config.py                  # All paths + tunable params
+├── frontend/
+│   ├── electron/
+│   │   ├── main.js                    # Electron main: spawn backend, BrowserWindow
+│   │   ├── preload.js                 # contextBridge IPC API surface
+│   │   └── updater.js                 # electron-updater (Phase 5)
+│   └── src/
+│       ├── main.jsx                   # React entrypoint
+│       ├── App.jsx                    # Router + layout
+│       ├── pages/
+│       │   ├── Search.jsx             # Semantic search + filter panel + photo grid
+│       │   ├── People.jsx             # Face clusters, labeling, merge
+│       │   ├── Graph.jsx              # D3.js force graph
+│       │   ├── Duplicates.jsx         # Side-by-side review + bulk delete
+│       │   └── Settings.jsx           # Folders, model info, re-index
+│       ├── components/
+│       │   ├── PhotoGrid.jsx          # Virtualized lazy-load grid
+│       │   ├── FaceCard.jsx           # Cluster thumbnail + label
+│       │   ├── SearchBar.jsx          # Debounced input + suggestions
+│       │   ├── FilterPanel.jsx        # Date/GPS/camera sliders
+│       │   ├── ProgressBar.jsx        # SSE-driven indexing progress
+│       │   └── Onboarding.jsx         # First-run wizard (Phase 5)
+│       └── api/
+│           └── client.js              # TanStack Query + fetch wrappers
+├── models/                            # Downloaded on first run
+│   ├── clip/                          # CLIP ViT-B/32 (~338MB)
+│   ├── facenet/                       # InceptionResnetV1 (~89MB)
+│   └── mtcnn/                         # MTCNN weights (~2MB)
+├── data/                              # Runtime data (user-specific)
+│   ├── pixelmind.db
+│   ├── faiss.index
+│   ├── face.index
+│   ├── graph.pkl
+│   └── thumbnails/
+└── scripts/
+    ├── dev_setup.py                   # Dev environment init
+    └── build.py                       # PyInstaller + electron-builder
+```
+
+---
+
+## 🗓️ Phase-Wise Implementation Plan
+
+---
+
+### ✅ Phase 1 — Foundation & Environment (Weeks 1–2)
+
+**Goal:** Booting skeleton. FastAPI health endpoint, DB schema, FAISS init, Electron scaffold.
+
+#### Deliverables
+- [ ] Python venv + all deps installed
+- [ ] SQLite DB with 6 tables created + WAL mode on
+- [ ] FAISS IVFFlat (512-D) + FlatL2 (128-D) indexes initialized
+- [ ] Config system (`config.py`) with all paths + params
+- [ ] `GET /health` returns `{"status": "ok", "db": true, "faiss": true}`
+- [ ] Electron + React + Vite + Tailwind scaffold compiling
+- [ ] Model downloader script ready (not yet triggered)
+
+#### SQLite Schema (`backend/db/schema.sql`)
+```sql
+PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys=ON;
+
+CREATE TABLE IF NOT EXISTS images (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path   TEXT UNIQUE NOT NULL,
+    sha256      TEXT UNIQUE NOT NULL,
+    phash       TEXT,
+    width       INTEGER,
+    height      INTEGER,
+    indexed_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_images_sha256 ON images(sha256);
+
+CREATE TABLE IF NOT EXISTS metadata (
+    image_id     INTEGER REFERENCES images(id) ON DELETE CASCADE,
+    shot_date    TEXT,
+    lat          REAL,
+    lon          REAL,
+    camera_make  TEXT,
+    camera_model TEXT,
+    location     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_metadata_shot_date ON metadata(shot_date);
+
+CREATE TABLE IF NOT EXISTS faces (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    image_id    INTEGER REFERENCES images(id) ON DELETE CASCADE,
+    bbox_x      REAL, bbox_y REAL, bbox_w REAL, bbox_h REAL,
+    cluster_id  INTEGER,
+    confidence  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_faces_cluster_id ON faces(cluster_id);
+
+CREATE TABLE IF NOT EXISTS clusters (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    label               TEXT,
+    face_count          INTEGER DEFAULT 0,
+    thumbnail_face_id   INTEGER,
+    first_seen          TEXT,
+    last_seen           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS embeddings_map (
+    image_id        INTEGER REFERENCES images(id) ON DELETE CASCADE,
+    faiss_index_id  INTEGER UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS duplicates (
+    image_id_a      INTEGER REFERENCES images(id),
+    image_id_b      INTEGER REFERENCES images(id),
+    phash_distance  INTEGER,
+    PRIMARY KEY (image_id_a, image_id_b)
+);
+CREATE INDEX IF NOT EXISTS idx_duplicates_phash ON duplicates(phash_distance);
+```
+
+#### Config (`backend/utils/config.py`)
+```python
+CLIP_MODEL_NAME   = "ViT-B-32"
+CLIP_PRETRAINED   = "openai"
+CLIP_DIM          = 512
+FACE_DIM          = 128
+FAISS_NLIST       = 256           # IVFFlat cells
+DBSCAN_EPS        = 0.6           # Tune per distribution
+DBSCAN_MIN        = 2
+PHASH_THRESHOLD   = 8             # Hamming distance for duplicate
+CLIP_BATCH_SIZE   = 8             # CPU-safe batch
+THUMBNAIL_SIZE    = (256, 256)
+```
+
+#### Acceptance Criteria
+```bash
+# Backend
+curl http://localhost:8000/health
+# → {"status":"ok","db":true,"faiss_clip":true,"faiss_face":true}
+
+# Frontend
+cd frontend && npm run dev   # Opens in browser at localhost:5173
+```
+
+---
+
+### 🔄 Phase 2 — AI Pipelines (Weeks 3–4)
+
+**Goal:** All 4 AI pipelines process images end-to-end. 50 test images fully indexed.
+
+#### Deliverables
+- [ ] `IngestModule` — file scan, SHA-256 dedup, async queue
+- [ ] `CLIPPipeline` — encode image (512-D), encode text, FAISS CRUD
+- [ ] `FacePipeline` — MTCNN detect → FaceNet embed → **incremental** cluster assign
+- [ ] `EXIFPipeline` — date, GPS, camera, offline geocode
+- [ ] `DedupPipeline` — pHash, Hamming distance, register pairs
+- [ ] `IndexWorker` — orchestrates all pipelines per image, yields SSE events
+
+#### Key Implementation Details
+
+**Incremental Face Clustering (CPU-safe):**
+```python
+class FacePipeline:
+    # On startup: load all existing cluster centroids from SQLite faces table
+    # (one centroid per cluster_id = mean of all embeddings in that cluster)
+
+    def assign_cluster(self, embedding: np.ndarray) -> int:
+        """
+        Incremental assignment: O(n_clusters) not O(n_all_faces)
+        1. Compute cosine distance to each cluster centroid
+        2. If min_distance < DBSCAN_EPS → assign to that cluster, update centroid
+        3. Else → create new cluster
+        """
+
+    def _update_centroid(self, cluster_id: int, new_embedding: np.ndarray):
+        """Running mean update: no need to reload all embeddings"""
+        old_mean = self.centroids[cluster_id]
+        n = self.cluster_counts[cluster_id]
+        self.centroids[cluster_id] = (old_mean * n + new_embedding) / (n + 1)
+        self.cluster_counts[cluster_id] += 1
+```
+
+**CLIP CPU Batch Settings:**
+```python
+# CPU-optimized: batch_size=8, torch.no_grad(), float32
+with torch.no_grad():
+    image_features = model.encode_image(preprocessed_batch)
+    image_features = F.normalize(image_features, dim=-1)
+```
+
+**Index Worker Flow:**
+```python
+async def process_image(path: Path, sse_queue: asyncio.Queue):
+    try:
+        sha256 = compute_sha256(path)
+        if db.is_indexed(sha256): return   # Skip
+
+        img = Image.open(path).convert("RGB")
+
+        # Parallel-ish (sequential on CPU to avoid memory spikes)
+        clip_vec   = clip_pipeline.encode_image(img)        # 512-D
+        exif_data  = exif_pipeline.extract(path)            # dict
+        phash_str  = dedup_pipeline.compute_phash(img)      # hex str
+        faces      = face_pipeline.detect_faces(img)        # list
+
+        image_id = db.insert_image(path, sha256, phash_str, img.size)
+        db.insert_metadata(image_id, exif_data)
+
+        faiss_id = faiss_store.add(clip_vec, image_id)
+        db.insert_embedding_map(image_id, faiss_id)
+
+        dedup_pipeline.check_and_register(image_id, phash_str)
+
+        for face in faces:
+            embedding  = face_pipeline.embed_face(face["crop"])
+            cluster_id = face_pipeline.assign_cluster(embedding)
+            db.insert_face(image_id, face["bbox"], cluster_id, face["conf"])
+
+        graph_manager.update(image_id, cluster_ids_in_image)
+
+        await sse_queue.put({"status": "indexed", "path": str(path)})
+
+    except Exception as e:
+        await sse_queue.put({"status": "error", "path": str(path), "error": str(e)})
+```
+
+#### Acceptance Criteria
+```bash
+# Index 50 test images
+curl -X POST http://localhost:8000/index \
+  -H "Content-Type: application/json" \
+  -d '{"folder_path": "C:/Users/DELL/Pictures/test"}'
+
+# Verify in DB:
+# images table → 50 rows
+# faces table → non-zero rows
+# clusters table → sensible groupings
+# duplicates table → any near-matches flagged
+```
+
+---
+
+### 🔄 Phase 3 — Graph Engine + FastAPI (Week 5)
+
+**Goal:** All 12 endpoints working, SSE streaming, file watcher active.
+
+#### Deliverables
+- [ ] `GraphManager` — build, incremental update, query, persist
+- [ ] All 12 API endpoints implemented and tested
+- [ ] SSE progress streaming connected to IndexWorker
+- [ ] Watchdog file watcher auto-triggers ingest
+- [ ] Search engine with 3-path merge + re-ranking
+
+#### API Surface
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/health` | GET | DB + FAISS status |
+| `/index` | POST | `{folder_path}` → enqueue folder |
+| `/index/progress` | GET | SSE stream: `data: {status, path, pct}` |
+| `/search` | GET | `?q=text&date_from=&date_to=&camera=&person=` |
+| `/thumbnail/{image_id}` | GET | 256×256 JPEG |
+| `/people` | GET | All clusters with label, count, thumbnail |
+| `/people/{cluster_id}` | GET | Images for one person |
+| `/label-cluster` | POST | `{cluster_id, label}` |
+| `/merge-clusters` | POST | `{cluster_ids: [1,2,3], target_label}` |
+| `/graph` | GET | Full graph JSON for D3 |
+| `/graph/{cluster_id}` | GET | Ego network for one person |
+| `/duplicates` | GET | Pairs with phash_distance ≤ threshold |
+| `/duplicates/delete` | POST | `{keep_id, delete_id}` |
+
+#### Search Merge Logic
+```python
+# Image-to-image search: reuse stored FAISS vector (< 1ms)
+def search_similar(image_id: int, k: int = 20):
+    faiss_id = db.get_faiss_id(image_id)          # From embeddings_map table
+    vec = faiss_store.reconstruct(faiss_id)        # faiss.index.reconstruct()
+    ids, scores = faiss_store.search(vec, k)
+    return ids, scores                             # No CLIP re-encode needed
+```
+
+#### Acceptance Criteria
+- All 12 endpoints return correct HTTP 200 responses
+- SSE `/index/progress` streams events to `curl -N`
+- `GET /search?q=beach` returns top-K image IDs with scores
+- `GET /graph` returns valid `{nodes: [], edges: []}` JSON
+- Watchdog detects new file in watched folder → auto-indexes within 5s
+
+---
+
+### 🔄 Phase 4 — Desktop UI (Weeks 6–7)
+
+**Goal:** Electron app with all 5 pages, dark glassmorphism theme.
+
+#### Deliverables
+- [ ] Electron main process spawns FastAPI backend subprocess
+- [ ] IPC bridge for native file dialogs
+- [ ] Search page: query bar, filter panel, lazy photo grid
+- [ ] People page: cluster grid, rename, merge
+- [ ] Graph page: D3.js force-directed, zoomable
+- [ ] Duplicates page: side-by-side pairs, bulk delete
+- [ ] Settings page: folder management, stats
+
+#### Design System
+```css
+:root {
+  --bg-base:        #0c0c11;
+  --bg-surface:     #13131c;
+  --bg-elevated:    #1c1c2e;
+  --accent:         #7c6af5;      /* Purple */
+  --accent-dim:     rgba(124,106,245,0.15);
+  --success:        #4ade80;
+  --warning:        #fbbf24;
+  --text-primary:   #f0f0f8;
+  --text-secondary: #9090b0;
+  --glass-bg:       rgba(255,255,255,0.04);
+  --glass-border:   rgba(255,255,255,0.08);
+  --radius-sm:      8px;
+  --radius-md:      14px;
+  --radius-lg:      20px;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+```
+
+#### D3.js Graph Implementation
+```javascript
+// Force simulation: people as nodes, co-appearances as edges
+const simulation = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(edges).id(d => d.id)
+    .strength(d => d.weight / maxWeight))
+  .force("charge", d3.forceManyBody().strength(-200))
+  .force("center", d3.forceCenter(width/2, height/2));
+
+// Node size = face_count, edge thickness = co-appear weight
+// Click node → highlight neighbors, dim others
+// Double-click → navigate to People page for that person
+```
+
+#### Acceptance Criteria
+- Electron app opens without errors
+- Drag-drop folder → progress bar fills → grid populates
+- Search returns photos grid in < 2 seconds
+- People page shows face cluster thumbnails
+- D3 graph renders with correct connections
+- Duplicate pairs display side-by-side
+
+---
+
+### 🔄 Phase 5 — Packaging & Polish (Week 8)
+
+**Goal:** Single-click Windows installer with onboarding wizard.
+
+#### Deliverables
+- [ ] PyInstaller bundle of FastAPI backend
+- [ ] Electron-builder NSIS installer (.exe)
+- [ ] First-run onboarding wizard (5 steps)
+- [ ] Model downloader with progress (integrated in onboarding)
+- [ ] QA: 1000-photo stress test, memory < 2GB
+- [ ] No network requests after first-run (Wireshark verified)
+
+#### Onboarding Wizard Steps
+```
+Step 1: Welcome → "PixelMind indexes your photos entirely on your PC"
+Step 2: Choose photo folder(s) → native folder dialog
+Step 3: Model download → "Downloading AI models (465MB)..." with progress
+Step 4: Hardware check → detect CPU cores, estimate indexing speed
+Step 5: Start first index → live progress → "Ready! 500 photos indexed"
+→ Land on Search page
+```
+
+#### PyInstaller Command
+```bash
+pyinstaller --onefile \
+  --name pixelmind-backend \
+  --hidden-import=faiss \
+  --hidden-import=open_clip \
+  --collect-data reverse_geocoder \
+  backend/api/main.py
+```
+
+#### Electron Builder Config (`electron-builder.yml`)
+```yaml
+appId: com.pixelmind.desktop
+productName: PixelMind
+directories:
+  output: release/
+files:
+  - "frontend/dist/**"
+  - "electron/**"
+extraResources:
+  - "backend/dist/pixelmind-backend.exe"
+win:
+  target: nsis
+  icon: assets/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: assets/installer.ico
+```
+
+#### Performance Benchmarks (Target — i5 12th Gen)
+| Operation | Target |
+|---|---|
+| Index 1,000 photos | < 17 min |
+| Semantic text search (10K photos) | < 500ms |
+| Image-to-image search (FAISS lookup) | < 5ms |
+| People page load (100 clusters) | < 300ms |
+| Peak RAM during indexing | < 2GB |
+
+---
+
+## 📊 Phase Summary
+
+| Phase | Duration | Milestone | Acceptance |
+|---|---|---|---|
+| **1 – Foundation** | Week 1–2 | Health endpoint, DB, FAISS init | `/health` → OK, 6 tables exist |
+| **2 – AI Pipelines** | Week 3–4 | 50 images indexed end-to-end | DB rows correct, faces clustered |
+| **3 – Graph + API** | Week 5 | All 12 endpoints, SSE, watcher | Postman suite green |
+| **4 – Desktop UI** | Week 6–7 | All 5 pages functional | Drag-drop → search working |
+| **5 – Packaging** | Week 8 | Windows NSIS installer | Clean install, 1K photos in 17 min |
+
+---
+
+## ⚠️ Known Risks (Mitigated)
+
+| Risk | Mitigation |
+|---|---|
+| RAM spike during face loading | Incremental cluster assign — never load all embeddings |
+| FAISS IVFFlat needs training (10K+ vectors) | Start with FlatL2; switch to IVFFlat after threshold |
+| PyInstaller + open-clip import issues | Use `--collect-all open_clip` flag |
+| Watchdog missing rapid file changes | SHA-256 check on re-scan catches any missed events |
+| EXIF GPS absent on many phone photos | Graceful fallback: store NULL, skip geocoding |
