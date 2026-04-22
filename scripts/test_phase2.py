@@ -7,11 +7,15 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from backend.pipelines.ingest import ingest_module
-from backend.db.db import get_db_connection
+from backend.db.db import init_db, get_db_connection
 from backend.search.faiss_store import faiss_clip, faiss_face
 
 async def run_test(folder_path):
     print("Script file loaded")
+    
+    # Ensure database tables exist before processing
+    init_db()
+    
     print(f"--- Phase 2 Test: Ingesting {folder_path} ---")
     
     # Check if folder exists

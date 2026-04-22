@@ -178,13 +178,13 @@ pixelmind/
 **Goal:** Booting skeleton. FastAPI health endpoint, DB schema, FAISS init, Electron scaffold.
 
 #### Deliverables
-- [ ] Python venv + all deps installed
-- [ ] SQLite DB with 6 tables created + WAL mode on
-- [ ] FAISS IVFFlat (512-D) + FlatL2 (128-D) indexes initialized
-- [ ] Config system (`config.py`) with all paths + params
-- [ ] `GET /health` returns `{"status": "ok", "db": true, "faiss": true}`
-- [ ] Electron + React + Vite + Tailwind scaffold compiling
-- [ ] Model downloader script ready (not yet triggered)
+- [x] Python venv + all deps installed
+- [x] SQLite DB with 6 tables created + WAL mode on
+- [x] FAISS IVFFlat (512-D) + FlatL2 (128-D) indexes initialized
+- [x] Config system (`config.py`) with all paths + params
+- [x] `GET /health` returns `{"status": "ok", "db": true, "faiss": true}`
+- [x] Electron + React + Vite + Tailwind scaffold compiling
+- [x] Model downloader script ready (not yet triggered)
 
 #### SQLite Schema (`backend/db/schema.sql`)
 ```sql
@@ -276,12 +276,12 @@ cd frontend && npm run dev   # Opens in browser at localhost:5173
 **Goal:** All 4 AI pipelines process images end-to-end. 50 test images fully indexed.
 
 #### Deliverables
-- [ ] `IngestModule` — file scan, SHA-256 dedup, async queue
-- [ ] `CLIPPipeline` — encode image (512-D), encode text, FAISS CRUD
-- [ ] `FacePipeline` — MTCNN detect → FaceNet embed → **incremental** cluster assign
-- [ ] `EXIFPipeline` — date, GPS, camera, offline geocode
-- [ ] `DedupPipeline` — pHash, Hamming distance, register pairs
-- [ ] `IndexWorker` — orchestrates all pipelines per image, yields SSE events
+- [x] `IngestModule` — file scan, SHA-256 dedup, async queue
+- [x] `CLIPPipeline` — encode image (512-D), encode text, FAISS CRUD
+- [x] `FacePipeline` — MTCNN detect → FaceNet embed → **incremental** cluster assign
+- [x] `EXIFPipeline` — date, GPS, camera, offline geocode
+- [x] `DedupPipeline` — pHash, Hamming distance, register pairs
+- [x] `IndexWorker` — orchestrates all pipelines per image, yields SSE events
 
 #### Key Implementation Details
 

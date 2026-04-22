@@ -71,4 +71,4 @@ FastAPI Routes: Implementing all 12 REST endpoints (Search, People, Graph, Dupli
 SSE Streaming: Progress events for real-time indexing status in the UI.
 Ready to move to Phase 3? Just say "Phase 3"!
 
-7
+/////////////////////////////////////////////////////////
