@@ -41,7 +41,7 @@ def update_clusters():
             embedding = faiss_face.reconstruct(faiss_idx)
             
             # 3. Assign cluster
-            cluster_id = pipeline.assign_cluster(embedding)
+            cluster_id = pipeline.assign_cluster(embedding, cursor=cursor)
             
             # 4. Update DB
             cursor.execute("UPDATE faces SET cluster_id = ? WHERE id = ?", (cluster_id, face_db_id))

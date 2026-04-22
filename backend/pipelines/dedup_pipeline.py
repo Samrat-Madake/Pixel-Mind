@@ -16,18 +16,24 @@ class DedupPipeline:
             return None
 
     @staticmethod
-    def check_and_register_duplicates(image_id: int, current_phash: str):
+    def check_and_register_duplicates(image_id: int, current_phash: str, cursor=None):
         """Find other images with similar pHash and record in duplicates table."""
         if not current_phash: return
         
         current_hash_obj = imagehash.hex_to_hash(current_phash)
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        
+        own_cursor = False
+        if cursor is None:
+            conn = get_db_connection()
+            db_cursor = conn.cursor()
+            own_cursor = True
+        else:
+            db_cursor = cursor
         
         # In a massive database, we wouldn't scan all. 
         # But for 10K-20K photos, fetching hashes is fast.
-        cursor.execute("SELECT id, phash FROM images WHERE id != ? AND phash IS NOT NULL", (image_id,))
-        rows = cursor.fetchall()
+        db_cursor.execute("SELECT id, phash FROM images WHERE id != ? AND phash IS NOT NULL", (image_id,))
+        rows = db_cursor.fetchall()
         
         duplicates = []
         for other_id, other_phash in rows:
@@ -40,13 +46,14 @@ class DedupPipeline:
                 duplicates.append((id_a, id_b, int(distance)))
         
         if duplicates:
-            cursor.executemany(
+            db_cursor.executemany(
                 "INSERT OR REPLACE INTO duplicates (image_id_a, image_id_b, phash_distance) VALUES (?, ?, ?)",
                 duplicates
             )
-            conn.commit()
             
-        conn.close()
+        if own_cursor:
+            conn.commit()
+            conn.close()
 
 # Global instance
 dedup_pipeline = DedupPipeline()

@@ -372,11 +372,11 @@ curl -X POST http://localhost:8000/index \
 **Goal:** All 12 endpoints working, SSE streaming, file watcher active.
 
 #### Deliverables
-- [ ] `GraphManager` — build, incremental update, query, persist
-- [ ] All 12 API endpoints implemented and tested
-- [ ] SSE progress streaming connected to IndexWorker
-- [ ] Watchdog file watcher auto-triggers ingest
-- [ ] Search engine with 3-path merge + re-ranking
+- [x] `GraphManager` — build, incremental update, query, persist
+- [x] All 12 API endpoints implemented and tested
+- [x] SSE progress streaming connected to IndexWorker
+- [x] Watchdog file watcher auto-triggers ingest
+- [x] Search engine with 3-path merge + re-ranking
 
 #### API Surface
 

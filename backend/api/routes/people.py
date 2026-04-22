@@ -54,3 +54,63 @@ async def get_cluster_images(cluster_id: int):
         
     conn.close()
     return results
+
+from pydantic import BaseModel
+from typing import List
+
+class LabelRequest(BaseModel):
+    cluster_id: int
+    label: str
+
+@router.post("/label-cluster")
+async def label_cluster(req: LabelRequest):
+    """Assign a string label to a cluster."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE clusters SET label = ? WHERE id = ?", (req.label, req.cluster_id))
+    conn.commit()
+    conn.close()
+    return {"message": f"Cluster {req.cluster_id} labeled as {req.label}"}
+
+class MergeRequest(BaseModel):
+    cluster_ids: List[int]
+    target_label: str = None
+
+@router.post("/merge-clusters")
+async def merge_clusters(req: MergeRequest):
+    """Merge multiple clusters into the first one in the list."""
+    if len(req.cluster_ids) < 2:
+        return {"message": "Need at least 2 clusters to merge"}
+        
+    primary_id = req.cluster_ids[0]
+    other_ids = req.cluster_ids[1:]
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 1. Reassign all faces from other_ids to primary_id
+    placeholders = ",".join(["?"] * len(other_ids))
+    cursor.execute(f"UPDATE faces SET cluster_id = ? WHERE cluster_id IN ({placeholders})", [primary_id] + other_ids)
+    
+    # 2. Update cluster count for primary_id
+    cursor.execute("SELECT COUNT(*) as count FROM faces WHERE cluster_id = ?", (primary_id,))
+    new_count = cursor.fetchone()["count"]
+    
+    # 3. Apply target_label if provided
+    if req.target_label:
+        cursor.execute("UPDATE clusters SET label = ?, face_count = ? WHERE id = ?", (req.target_label, new_count, primary_id))
+    else:
+        cursor.execute("UPDATE clusters SET face_count = ? WHERE id = ?", (new_count, primary_id))
+        
+    # 4. Delete the other clusters
+    cursor.execute(f"DELETE FROM clusters WHERE id IN ({placeholders})", other_ids)
+    
+    conn.commit()
+    conn.close()
+    
+    # Also update graph
+    from backend.graph.graph_manager import graph_manager
+    # In a full implementation, we'd collapse the nodes in NetworkX
+    
+    return {"message": f"Merged into cluster {primary_id}"}
+

@@ -9,7 +9,7 @@ from backend.db.db import init_db, get_db_connection
 from backend.search.faiss_store import faiss_clip, faiss_face
 from backend.utils.config import DB_PATH
 
-from backend.api.routes import search, images, people
+from backend.api.routes import search, images, people, index_routes, graph_routes, duplicate_routes
 
 app = FastAPI(title="PixelMind API")
 
@@ -26,6 +26,9 @@ app.add_middleware(
 app.include_router(search.router)
 app.include_router(images.router)
 app.include_router(people.router)
+app.include_router(index_routes.router)
+app.include_router(graph_routes.router)
+app.include_router(duplicate_routes.router)
 
 @app.on_event("startup")
 async def startup_event():

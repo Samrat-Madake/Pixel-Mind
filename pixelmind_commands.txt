@@ -1,0 +1,111 @@
+# 🌌 PixelMind Terminal Commands Reference
+
+This file contains all the essential commands for setting up, running, and managing the PixelMind project.
+
+---
+
+## 🛠️ 1. Initial Setup
+
+### Create and Activate Virtual Environment
+```powershell
+# Create environment
+python -m venv venv
+
+# Activate (Windows)
+.\venv\Scripts\activate
+
+# Activate (Mac/Linux)
+source venv/bin/activate
+```
+
+### Install Dependencies
+```powershell
+# Install backend dependencies
+pip install -r backend/requirements.txt
+
+# Install frontend dependencies
+cd frontend
+npm install
+cd ..
+```
+
+### Download AI Models
+Downloads CLIP, MTCNN, and FaceNet weights for offline use (~1.5GB).
+```powershell
+python -m backend.utils.model_downloader
+```
+
+---
+
+## 🚀 2. Running the Application
+
+### Start Backend API (FastAPI)
+The backend must be running for the frontend or search to work.
+```powershell
+python -m backend.api.main
+```
+- **Docs**: http://localhost:8000/docs
+- **Health**: http://localhost:8000/health
+
+### Start Frontend (Electron + Vite)
+Open a new terminal, activate venv, and run:
+```powershell
+cd frontend
+npm run electron:dev
+```
+
+---
+
+## 📸 3. Data Ingestion & Indexing
+
+### Ingest a Photo Folder
+Scans a folder, extracts EXIF, generates CLIP embeddings, and detects faces.
+```powershell
+# Replace "C:\Path\To\Your\Photos" with your actual library path
+python .\scripts\test_phase2.py "C:\Path\To\Your\Photos"
+```
+
+### Update Face Clusters
+Runs clustering logic on detected faces to group people.
+```powershell
+python .\scripts\update_clusters.py
+```
+
+### Rebuild Relationship Graph
+Processes the social graph to find connections between people who appear together.
+```powershell
+python .\scripts\rebuild_graph.py
+```
+
+---
+
+## 🔍 4. Testing & Utilities
+
+### Test Semantic Search
+Quickly test if CLIP searching is working via terminal.
+```powershell
+python .\scripts\test_search.py
+```
+
+### Fix Clusters
+Utility to clean up or reset face clustering if needed.
+```powershell
+python .\scripts\fix_clusters.py
+```
+
+---
+
+## 📝 5. Quick Development Workflow (Windows)
+
+1. **Terminal 1**: `.\venv\Scripts\activate`; `python -m backend.api.main`
+2. **Terminal 2**: `cd frontend`; `npm run electron:dev`
+3. **Terminal 3**: Use for ingestion scripts or managing the DB.
+
+---
+
+## ⚠️ 6. Resetting the System
+Use this command to delete all indexed data and start fresh:
+```powershell
+# Deletes DB, Vector Indexes, and Thumbnails
+Remove-Item -Path "data\pixelmind.db", "data\faiss_clip.index", "data\faiss_face.index", "data\graph.pkl" -ErrorAction SilentlyContinue; Remove-Item -Path "data\thumbnails\*" -Recurse -Force
+```

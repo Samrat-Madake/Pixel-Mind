@@ -85,7 +85,7 @@ class FacePipeline:
         return torch.from_numpy(face_tensor).permute(2, 0, 1)
 
  
-    def assign_cluster(self, embedding: np.ndarray) -> int:
+    def assign_cluster(self, embedding: np.ndarray, cursor=None) -> int:
         """
         Incremental Clustering (Nearest Centroid).
         If nearest centroid is within DBSCAN_EPS, assign to that cluster.
@@ -104,28 +104,35 @@ class FacePipeline:
                 min_dist = dist
                 best_cluster_id = cluster_id
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        own_cursor = False
+        if cursor is None:
+            conn = get_db_connection()
+            db_cursor = conn.cursor()
+            own_cursor = True
+        else:
+            db_cursor = cursor
         
         if best_cluster_id != -1 and min_dist < DBSCAN_EPS:
             # Update existing cluster centroid (running mean)
             self._update_centroid(best_cluster_id, embedding)
             # Update DB
-            cursor.execute("UPDATE clusters SET face_count = face_count + 1 WHERE id = ?", (best_cluster_id,))
-            cursor.execute("UPDATE cluster_centroids SET centroid = ? WHERE cluster_id = ?", 
+            db_cursor.execute("UPDATE clusters SET face_count = face_count + 1 WHERE id = ?", (best_cluster_id,))
+            db_cursor.execute("UPDATE cluster_centroids SET centroid = ? WHERE cluster_id = ?", 
                            (self.centroids[best_cluster_id].tobytes(), best_cluster_id))
         else:
             # Create new cluster
-            cursor.execute("INSERT INTO clusters (face_count) VALUES (1)")
-            new_id = cursor.lastrowid
+            db_cursor.execute("INSERT INTO clusters (face_count) VALUES (1)")
+            new_id = db_cursor.lastrowid
             self.centroids[new_id] = embedding
             self.cluster_counts[new_id] = 1
-            cursor.execute("INSERT INTO cluster_centroids (cluster_id, centroid) VALUES (?, ?)",
+            db_cursor.execute("INSERT INTO cluster_centroids (cluster_id, centroid) VALUES (?, ?)",
                            (new_id, embedding.tobytes()))
             best_cluster_id = new_id
         
-        conn.commit()
-        conn.close()
+        if own_cursor:
+            conn.commit()
+            conn.close()
+            
         return best_cluster_id
 
     def _update_centroid(self, cluster_id, new_embedding):

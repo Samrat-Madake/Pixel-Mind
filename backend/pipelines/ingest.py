@@ -130,7 +130,7 @@ class IngestModule:
                 # 6. Face Detection & Clustering
                 faces = face_p.detect_and_embed(str(file_path))
                 for f in faces:
-                    cluster_id = face_p.assign_cluster(f["embedding"])
+                    cluster_id = face_p.assign_cluster(f["embedding"], cursor=cursor)
                     # Save embedding to FAISS
                     from backend.search.faiss_store import faiss_face
                     f_faiss_id = faiss_face.add(f["embedding"])
@@ -147,11 +147,11 @@ class IngestModule:
                 # 7. Thumbnails
                 thumbnail_pipeline.generate(str(file_path), image_id)
                 
+                # 8. Late-stage dedup check (requires image to be in DB first)
+                dedup_pipeline.check_and_register_duplicates(image_id, phash, cursor=cursor)
+
                 # Commit everything for this image
                 conn.commit()
-                
-                # 8. Late-stage dedup check (requires image to be in DB first)
-                dedup_pipeline.check_and_register_duplicates(image_id, phash)
                 
                 print(f"Indexed {image_id}: {file_path}")
 
