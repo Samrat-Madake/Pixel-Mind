@@ -11,11 +11,15 @@ async def get_people():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Fetch clusters with their representative thumbnail if available
+    # Fetch clusters with a fallback thumbnail from any associated face
     cursor.execute("""
-        SELECT id, label, face_count, thumbnail_face_id 
-        FROM clusters 
-        ORDER BY face_count DESC
+        SELECT c.id, c.label, c.face_count, 
+               COALESCE(
+                   (SELECT f.image_id FROM faces f WHERE f.id = c.thumbnail_face_id),
+                   (SELECT f.image_id FROM faces f WHERE f.cluster_id = c.id LIMIT 1)
+               ) as thumbnail_image_id
+        FROM clusters c
+        ORDER BY c.face_count DESC
     """)
     clusters = []
     for row in cursor.fetchall():
@@ -29,6 +33,18 @@ async def get_people():
         
     conn.close()
     return clusters
+
+@router.delete("/{cluster_id}")
+async def delete_cluster(cluster_id: int):
+    """Delete a cluster (and unlink its faces)."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE faces SET cluster_id = NULL WHERE cluster_id = ?", (cluster_id,))
+    cursor.execute("DELETE FROM cluster_centroids WHERE cluster_id = ?", (cluster_id,))
+    cursor.execute("DELETE FROM clusters WHERE id = ?", (cluster_id,))
+    conn.commit()
+    conn.close()
+    return {"message": f"Cluster {cluster_id} deleted."}
 
 @router.get("/{cluster_id}/images")
 async def get_cluster_images(cluster_id: int):
@@ -54,6 +70,24 @@ async def get_cluster_images(cluster_id: int):
         
     conn.close()
     return results
+
+@router.delete("/{cluster_id}/images/{image_id}")
+async def remove_image_from_cluster(cluster_id: int, image_id: int):
+    """Remove a falsely clustered face from this person."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE faces 
+        SET cluster_id = NULL 
+        WHERE cluster_id = ? AND image_id = ?
+    """, (cluster_id, image_id))
+    
+    # Update face count
+    cursor.execute("UPDATE clusters SET face_count = face_count - 1 WHERE id = ?", (cluster_id,))
+    
+    conn.commit()
+    conn.close()
+    return {"message": "Image unlinked from cluster"}
 
 from pydantic import BaseModel
 from typing import List

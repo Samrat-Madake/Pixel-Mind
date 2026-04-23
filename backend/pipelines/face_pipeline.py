@@ -137,9 +137,9 @@ class FacePipeline:
 
     def _update_centroid(self, cluster_id, new_embedding):
         old_mean = self.centroids[cluster_id]
-        n = self.cluster_counts[cluster_id]
+        n = self.cluster_counts.get(cluster_id, 1)
         self.centroids[cluster_id] = (old_mean * n + new_embedding) / (n + 1)
-        self.cluster_counts[cluster_id] += 1
+        self.cluster_counts[cluster_id] = n + 1
 
 # Global instance
 _face_pipeline = None

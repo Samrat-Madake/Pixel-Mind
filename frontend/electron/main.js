@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const isDev = process.env.NODE_ENV === 'development';
@@ -36,6 +36,18 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+ipcMain.handle('dialog:openDirectory', async () => {
+  if (!mainWindow) return null;
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory']
+  });
+  if (canceled) {
+    return null;
+  } else {
+    return filePaths[0];
+  }
+});
 
 function startBackend() {
   const pythonExecutable = path.join(__dirname, '../../../venv/Scripts/python.exe');

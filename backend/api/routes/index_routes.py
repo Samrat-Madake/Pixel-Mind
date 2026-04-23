@@ -68,3 +68,24 @@ async def start_indexing(req: IndexRequest, background_tasks: BackgroundTasks):
 @router.get("/progress")
 async def get_progress():
     return StreamingResponse(sse_manager.stream_events("index"), media_type="text/event-stream")
+
+@router.get("/status")
+async def get_status():
+    status = "idle"
+    if ingest_module.is_processing:
+        status = "indexing"
+    elif ingest_module.total_count > 0 and ingest_module.processed_count >= ingest_module.total_count:
+        status = "completed"
+        
+    current_step = status
+    if status == "indexing" and hasattr(ingest_module, 'current_file') and ingest_module.current_file:
+        import os
+        filename = os.path.basename(ingest_module.current_file)
+        current_step = f"Processing: {filename}"
+        
+    return {
+        "status": status,
+        "processed_items": ingest_module.processed_count,
+        "total_items": ingest_module.total_count,
+        "current_step": current_step
+    }

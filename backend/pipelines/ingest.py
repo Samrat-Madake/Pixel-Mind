@@ -22,6 +22,7 @@ class IngestModule:
         self.is_processing = False
         self.processed_count = 0
         self.total_count = 0
+        self.current_file = ""
 
     def scan_folder(self, folder_path: str) -> List[Path]:
         path = Path(folder_path)
@@ -78,6 +79,7 @@ class IngestModule:
         
         while not self.queue.empty():
             file_path = await self.queue.get()
+            self.current_file = str(file_path)
             try:
                 # 1. SHA-256 binary dedup
                 sha256 = self.compute_sha256(file_path)
