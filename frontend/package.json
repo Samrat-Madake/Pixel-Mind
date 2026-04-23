@@ -2,14 +2,18 @@
   "name": "frontend",
   "private": true,
   "version": "0.0.0",
+  "main": "electron/main.cjs",
+  "description": "PixelMind - Intelligent Local Photo Management",
+  "author": "PixelMind Team",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "electron": "electron electron/main.js",
-    "electron:dev": "concurrently \"npm run dev\" \"electron electron/main.js\""
+    "electron": "electron electron/main.cjs",
+    "electron:dev": "concurrently \"npm run dev\" \"electron electron/main.cjs\"",
+    "build:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -42,5 +46,29 @@
     "postcss": "^8.5.9",
     "tailwindcss": "^4.2.2",
     "vite": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.pixelmind.app",
+    "productName": "PixelMind",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../packaging/dist/pixelmind_backend",
+        "to": "pixelmind_backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "electron/icon.png"
+    }
   }
 }

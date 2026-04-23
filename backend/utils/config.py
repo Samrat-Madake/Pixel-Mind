@@ -1,9 +1,18 @@
-import os
+import sys
 from pathlib import Path
 
 # Base Paths
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-BACKEND_DIR = BASE_DIR / "backend"
+if getattr(sys, 'frozen', False):
+    # Running in a bundle (PyInstaller)
+    # The exe is in packaging/dist/pixelmind_backend/pixelmind_backend.exe
+    # We want data/models to stay in the original root folder or relative to the exe
+    # Let's assume the user puts the exe folder next to data/models or inside root
+    BASE_DIR = Path(sys.executable).resolve().parent.parent.parent.parent
+else:
+    # Running in development
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 MODELS_DIR = BASE_DIR / "models"
 THUMBNAILS_DIR = DATA_DIR / "thumbnails"

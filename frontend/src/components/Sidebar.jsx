@@ -40,7 +40,7 @@ export default function Sidebar() {
       }}
     >
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <img src="/Pixel Mind Logo.png" alt="Logo" style={{ width: 85, height: 85 }} />
+        <img src="logo.png" alt="Logo" style={{ width: 85, height: 85 }} />
         <Typography variant="h6" sx={{ fontSize: '20px', color: 'text.primary' }}>Pixel Mind</Typography> 
       </Box>
 

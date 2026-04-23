@@ -69,7 +69,7 @@ export default function TopBar() {
               <SearchIcon />
             </SearchIconWrapper>
             <StyledInputBase
-              placeholder="Search \u0022India\u0022"
+              placeholder='Search "India"'
               inputProps={{ 'aria-label': 'search' }}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
